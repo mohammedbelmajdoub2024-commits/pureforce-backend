@@ -215,3 +215,29 @@ def generate(req: ChatPrompt, user: User = Depends(get_current_user), db: Sessio
         raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+class OrderRequest(BaseModel):
+    name: str
+    email: str
+    phone: str
+    product: str
+    quantity: int
+    address: str
+
+from email_utils import send_order_notification
+
+@app.post("/order")
+def create_order(req: OrderRequest, user: User = Depends(get_current_user)):
+    try:
+        send_order_notification({
+            "name": req.name,
+            "email": req.email,
+            "phone": req.phone,
+            "product": req.product,
+            "quantity": req.quantity,
+            "address": req.address
+        })
+        return {"message": "Order placed successfully"}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
