@@ -81,22 +81,26 @@ def get_db():
         db.close()
 
 # --- Auth Dependency ---
-def get_current_user(authorization: str = Header(None), db: Session = Depends(get_db)):
-    if not authorization or not authorization.startswith("Bearer "):
-        raise HTTPException(status_code=401, detail="Invalid authorization header")
-    token = authorization.split(" ")[1]
-    try:
-        payload = jwt.decode(token, JWT_SECRET, algorithms=[ALGORITHM])
-        user_id = payload.get("sub")
-        if user_id is None:
-            raise HTTPException(status_code=401, detail="Invalid token")
-    except jwt.PyJWTError:
-        raise HTTPException(status_code=401, detail="Token validation failed")
+from auth import verify_token
+
+def get_current_user(decoded_token: dict = Depends(verify_token), db: Session = Depends(get_db)):
+    email = decoded_token.get("email")
+    if not email:
+        raise HTTPException(status_code=401, detail="Invalid token payload: no email")
     
-    user = db.query(User).filter(User.id == int(user_id)).first()
-    if user is None:
-        raise HTTPException(status_code=401, detail="User not found")
+    user = db.query(User).filter(User.email == email).first()
+    if not user:
+        # Auto-create user in local DB if they registered via Firebase
+        user = User(
+            email=email, 
+            username=email.split('@')[0], 
+            password_hash="firebase_managed"
+        )
+        db.add(user)
+        db.commit()
+        db.refresh(user)
     return user
+
 
 # --- App & Endpoints ---
 app = FastAPI(title="PureForce Bleach API")
