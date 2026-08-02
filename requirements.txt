@@ -9,3 +9,5 @@ bcrypt==4.2.0
 python-multipart==0.0.9
 requests==2.32.3
 firebase-admin
+psycopg2-binary
+groq
