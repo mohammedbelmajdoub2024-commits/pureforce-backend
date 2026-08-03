@@ -7,6 +7,11 @@ load_dotenv()
 def send_order_notification(order_data: dict):
     sender = os.getenv("GMAIL_USER")
     password = os.getenv("GMAIL_APP_PASSWORD")
+    
+    if not sender or not password:
+        print("Gmail configuration missing. Skipping email notification.")
+        return
+
     receiver = sender  # Send to self
 
     body = f"""Nouvelle commande PureForce Bleach !
@@ -26,3 +31,4 @@ Adresse: {order_data.get('address')}
     with smtplib.SMTP_SSL('smtp.gmail.com', 465) as server:
         server.login(sender, password)
         server.sendmail(sender, receiver, msg.as_string())
+

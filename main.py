@@ -53,6 +53,18 @@ class ChatSession(Base):
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
+class Order(Base):
+    __tablename__ = "orders"
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    name = Column(String(255), nullable=False)
+    email = Column(String(255), nullable=False)
+    phone = Column(String(100), nullable=False)
+    product = Column(String(255), nullable=False)
+    quantity = Column(Integer, nullable=False)
+    address = Column(Text, nullable=False)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
 # Ensure tables are created (in a real app, use Alembic)
 Base.metadata.create_all(bind=engine)
 
@@ -227,17 +239,46 @@ class OrderRequest(BaseModel):
 from email_utils import send_order_notification
 
 @app.post("/order")
-def create_order(req: OrderRequest, user: User = Depends(get_current_user)):
+def create_order(req: OrderRequest, user: User = Depends(get_current_user), db: Session = Depends(get_db)):
     try:
-        send_order_notification({
-            "name": req.name,
-            "email": req.email,
-            "phone": req.phone,
-            "product": req.product,
-            "quantity": req.quantity,
-            "address": req.address
-        })
-        return {"message": "Order placed successfully"}
+        # 1. Persist the order in the SQLite database
+        new_order = Order(
+            user_id=user.id,
+            name=req.name,
+            email=req.email,
+            phone=req.phone,
+            product=req.product,
+            quantity=req.quantity,
+            address=req.address
+        )
+        db.add(new_order)
+        db.commit()
+        db.refresh(new_order)
+
+        # 2. Attempt to email the order notification (fails gracefully if SMTP configs are missing)
+        try:
+            send_order_notification({
+                "name": req.name,
+                "email": req.email,
+                "phone": req.phone,
+                "product": req.product,
+                "quantity": req.quantity,
+                "address": req.address
+            })
+        except Exception as email_err:
+            # We print the error but do not fail the request since the order is safely saved in the DB
+            print(f"Skipping order email notification due to: {email_err}")
+
+        return {"message": "Order placed successfully", "order_id": new_order.id}
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/orders")
+def get_orders(user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    try:
+        orders = db.query(Order).filter(Order.user_id == user.id).order_by(Order.created_at.desc()).all()
+        return orders
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
