@@ -66,6 +66,25 @@ class Order(Base):
     created_at = Column(DateTime, default=datetime.utcnow)
 
 # Ensure tables are created (in a real app, use Alembic)
+from sqlalchemy import text
+try:
+    with engine.connect() as conn:
+        # Check if the 'orders' table exists and lacks the 'user_id' column
+        res = conn.execute(text("SELECT column_name FROM information_schema.columns WHERE table_name='orders' AND column_name='user_id'"))
+        row = res.fetchone()
+        
+        # If the table exists but is missing 'user_id', drop it to trigger recreation
+        # Also check if table exists first to avoid false drops
+        table_exists_res = conn.execute(text("SELECT EXISTS (SELECT FROM information_schema.tables WHERE table_name = 'orders')"))
+        table_exists = table_exists_res.scalar()
+        
+        if table_exists and not row:
+            print("Detected outdated 'orders' table. Dropping to recreate with 'user_id' column.")
+            conn.execute(text("DROP TABLE IF EXISTS orders CASCADE"))
+            conn.commit()
+except Exception as migration_err:
+    print(f"Skipping orders table schema migration check: {migration_err}")
+
 Base.metadata.create_all(bind=engine)
 
 # --- Security ---
