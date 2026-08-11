@@ -51,4 +51,4 @@ def verify_token(authorization: str = Header(None)):
         decoded_token = auth.verify_id_token(token)
         return decoded_token
     except Exception:
-        raise HTTPException(status_code=401, detail="Token invalide ou expiré")
+        raise HTTPException(status_code=401, detail="Token invalide ou expiré")
