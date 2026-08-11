@@ -9,46 +9,50 @@ logger = logging.getLogger(__name__)
 
 firebase_initialized = False
 
-cred_path = os.path.join(os.path.dirname(__file__), "serviceAccountKey.json")
-if os.path.exists(cred_path):
+if os.getenv("FB_KEY_1") and os.getenv("FB_KEY_2") and os.getenv("FB_KEY_3"):
     try:
-        cred = credentials.Certificate(cred_path)
-        firebase_admin.initialize_app(cred)
-        firebase_initialized = True
-        logger.info("Firebase initialized from serviceAccountKey.json")
-    except Exception as e:
-        logger.error(f"Failed to init Firebase from file: {e}")
-elif os.getenv("FIREBASE_SERVICE_ACCOUNT"):
-    try:
-        cred_info = json.loads(os.getenv("FIREBASE_SERVICE_ACCOUNT"))
+        raw = (
+            os.environ["FB_KEY_1"]
+            + os.environ["FB_KEY_2"]
+            + os.environ["FB_KEY_3"]
+        )
+
+        cred_info = json.loads(raw)
         cred = credentials.Certificate(cred_info)
+
         firebase_admin.initialize_app(cred)
         firebase_initialized = True
-        logger.info("Firebase initialized from FIREBASE_SERVICE_ACCOUNT env var")
+
+        logger.info("Firebase initialized successfully")
+
     except Exception as e:
-        logger.error(f"Failed to load Firebase credentials from environment variable: {e}")
+        logger.error(f"Firebase initialization failed: {e}")
+
 else:
-    logger.warning(
-        "Firebase credentials not found. "
-        "Set FIREBASE_SERVICE_ACCOUNT env var on Railway. "
-        "All authenticated endpoints will return 503 until this is fixed."
-    )
+    logger.warning("Firebase credentials not found")
 
 
 def verify_token(authorization: str = Header(None)):
     if not firebase_initialized:
         raise HTTPException(
             status_code=503,
-            detail="Firebase is not configured on this server. Set the FIREBASE_SERVICE_ACCOUNT environment variable."
+            detail="Firebase is not configured on this server."
         )
 
     if authorization is None or not authorization.startswith("Bearer "):
-        raise HTTPException(status_code=401, detail="Token manquant")
+        raise HTTPException(
+            status_code=401,
+            detail="Token manquant"
+        )
 
     token = authorization.split("Bearer ")[1]
 
     try:
         decoded_token = auth.verify_id_token(token)
         return decoded_token
+
     except Exception:
-        raise HTTPException(status_code=401, detail="Token invalide ou expiré")
+        raise HTTPException(
+            status_code=401,
+            detail="Token invalide ou expiré"
+        )
