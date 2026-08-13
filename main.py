@@ -65,7 +65,7 @@ class Order(Base):
     address = Column(Text, nullable=False)
     created_at = Column(DateTime, default=datetime.utcnow)
 
-# Ensure tables are created (in a real app, use Alembic)
+# Ensure tables are created
 from sqlalchemy import text
 try:
     with engine.connect() as conn:
@@ -84,7 +84,7 @@ except Exception as migration_err:
 
 Base.metadata.create_all(bind=engine)
 
-# --- Security ---
+# --- Security & Auth Helpers ---
 def verify_password(plain_password: str, hashed_password: str) -> bool:
     try:
         return bcrypt.checkpw(plain_password.encode('utf-8'), hashed_password.encode('utf-8'))
@@ -108,7 +108,7 @@ def get_db():
     finally:
         db.close()
 
-# --- Auth Dependency ---
+# Auth Dependency
 from auth import verify_token
 
 def get_current_user(decoded_token: dict = Depends(verify_token), db: Session = Depends(get_db)):
@@ -129,10 +129,10 @@ def get_current_user(decoded_token: dict = Depends(verify_token), db: Session = 
     return user
 
 
-# --- App & Endpoints ---
+# --- FastAPI Application ---
 app = FastAPI(title="PureForce Bleach API")
 
-# Updated CORS Middleware allowing Netlify and wildcards properly
+# Setup CORS Middleware
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[
@@ -147,7 +147,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Catch-all OPTIONS route to guarantee browser preflights pass
+# Universal preflight catch-all route for browser OPTIONS requests
 @app.options("/{full_path:path}")
 async def options_handler(full_path: str):
     return Response(status_code=200)
@@ -194,12 +194,12 @@ def login(user: UserLogin, db: Session = Depends(get_db)):
 @app.post("/generate")
 def generate(req: ChatPrompt, user: User = Depends(get_current_user), db: Session = Depends(get_db)):
     if not GROQ_API_KEY:
-        raise HTTPException(status_code=500, detail="GROQ_API_KEY is not configured in .env")
+        raise HTTPException(status_code=500, detail="GROQ_API_KEY is not configured in environment variables")
     
     try:
         session_id = uuid.UUID(req.session_id)
     except ValueError:
-        raise HTTPException(status_code=400, detail="Invalid session_id format")
+        raise HTTPException(status_code=400, detail="Invalid session_id format (must be UUID)")
 
     chat_session = db.query(ChatSession).filter(ChatSession.id == str(session_id), ChatSession.user_id == user.id).first()
     
