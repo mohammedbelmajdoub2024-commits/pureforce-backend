@@ -4,7 +4,7 @@ import json
 from datetime import datetime, timedelta
 from typing import List, Optional
 
-from fastapi import FastAPI, HTTPException, Depends, Header
+from fastapi import FastAPI, HTTPException, Depends, Header, Response
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 import jwt
@@ -69,12 +69,9 @@ class Order(Base):
 from sqlalchemy import text
 try:
     with engine.connect() as conn:
-        # Check if the 'orders' table exists and lacks the 'user_id' column
         res = conn.execute(text("SELECT column_name FROM information_schema.columns WHERE table_name='orders' AND column_name='user_id'"))
         row = res.fetchone()
         
-        # If the table exists but is missing 'user_id', drop it to trigger recreation
-        # Also check if table exists first to avoid false drops
         table_exists_res = conn.execute(text("SELECT EXISTS (SELECT FROM information_schema.tables WHERE table_name = 'orders')"))
         table_exists = table_exists_res.scalar()
         
@@ -121,7 +118,6 @@ def get_current_user(decoded_token: dict = Depends(verify_token), db: Session = 
     
     user = db.query(User).filter(User.email == email).first()
     if not user:
-        # Auto-create user in local DB if they registered via Firebase
         user = User(
             email=email, 
             username=email.split('@')[0], 
@@ -136,13 +132,25 @@ def get_current_user(decoded_token: dict = Depends(verify_token), db: Session = 
 # --- App & Endpoints ---
 app = FastAPI(title="PureForce Bleach API")
 
+# Updated CORS Middleware allowing Netlify and wildcards properly
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["https://stirring-monstera-e17e3e.netlify.app"],
-   allow_credentials=True,
+    allow_origins=[
+        "https://stirring-monstera-e17e3e.netlify.app",
+        "http://localhost:3000",
+        "http://localhost:5500",
+        "http://127.0.0.1:5500",
+        "*"
+    ],
+    allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# Catch-all OPTIONS route to guarantee browser preflights pass
+@app.options("/{full_path:path}")
+async def options_handler(full_path: str):
+    return Response(status_code=200)
 
 class UserCreate(BaseModel):
     email: str
@@ -205,7 +213,6 @@ def generate(req: ChatPrompt, user: User = Depends(get_current_user), db: Sessio
     history.append({"role": "user", "parts": [req.prompt]})
     
     try:
-        # Build messages for Groq (OpenAI-compatible format)
         messages = [
             {"role": "system", "content": "You are PureForce AI, a helpful virtual expert for PureForce Bleach products. You help customers use products safely, answer cleaning questions, and provide usage tips. Be friendly, concise, and professional."}
         ]
@@ -260,7 +267,6 @@ from email_utils import send_order_notification
 @app.post("/order")
 def create_order(req: OrderRequest, user: User = Depends(get_current_user), db: Session = Depends(get_db)):
     try:
-        # 1. Persist the order in the SQLite database
         new_order = Order(
             user_id=user.id,
             name=req.name,
@@ -274,7 +280,6 @@ def create_order(req: OrderRequest, user: User = Depends(get_current_user), db: 
         db.commit()
         db.refresh(new_order)
 
-        # 2. Attempt to email the order notification (fails gracefully if SMTP configs are missing)
         try:
             send_order_notification({
                 "name": req.name,
@@ -285,7 +290,6 @@ def create_order(req: OrderRequest, user: User = Depends(get_current_user), db: 
                 "address": req.address
             })
         except Exception as email_err:
-            # We print the error but do not fail the request since the order is safely saved in the DB
             print(f"Skipping order email notification due to: {email_err}")
 
         return {"message": "Order placed successfully", "order_id": new_order.id}
@@ -300,4 +304,3 @@ def get_orders(user: User = Depends(get_current_user), db: Session = Depends(get
         return orders
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
-
