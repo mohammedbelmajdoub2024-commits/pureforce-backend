@@ -27,7 +27,7 @@ ACCESS_TOKEN_EXPIRE_MINUTES = 60 * 24 * 7 # 7 days
 
 GROQ_API_KEY = os.getenv("GROQ_API_KEY")
 GROQ_URL = "https://api.groq.com/openai/v1/chat/completions"
-GROQ_MODEL = "llama3-8b-8192"
+GROQ_MODEL = "openai/gpt-oss-20b"
 
 # --- Database Setup ---
 is_sqlite = DATABASE_URL.startswith("sqlite")
