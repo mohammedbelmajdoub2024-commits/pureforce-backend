@@ -188,7 +188,7 @@ def login(user: UserLogin, db: Session = Depends(get_db)):
     if not db_user or not verify_password(user.password, db_user.password_hash):
         raise HTTPException(status_code=401, detail="Incorrect email or password")
     
-    token = create_access_token({"sub": str(db_user.id), "username": db_user.username})
+    token = create_access_token({     "sub": str(db_user.id),     "username": db_user.username,     "email": db_user.email })
     return {"access_token": token, "token_type": "bearer"}
 
 @app.post("/generate")
