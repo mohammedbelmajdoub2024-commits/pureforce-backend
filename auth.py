@@ -1,19 +1,18 @@
 import os
 import jwt
-from fastapi import Header, HTTPException
+from fastapi import Depends, HTTPException
+from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 
 JWT_SECRET = os.getenv("JWT_SECRET", "supersecretkey")
 ALGORITHM = "HS256"
 
+security = HTTPBearer()
 
-def verify_token(authorization: str = Header(None)):
-    if authorization is None or not authorization.startswith("Bearer "):
-        raise HTTPException(
-            status_code=401,
-            detail="Token manquant"
-        )
 
-    token = authorization.split("Bearer ", 1)[1]
+def verify_token(
+    credentials: HTTPAuthorizationCredentials = Depends(security)
+):
+    token = credentials.credentials
 
     try:
         decoded_token = jwt.decode(
