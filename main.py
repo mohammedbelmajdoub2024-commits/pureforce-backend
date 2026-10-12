@@ -9,7 +9,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 import jwt
 import bcrypt
-from sqlalchemy import create_engine, Column, Integer, String, Text, DateTime, JSON, ForeignKey
+from sqlalchemy import create_engine, Column, Integer, String, Text, DateTime, JSON, ForeignKey, func
 from sqlalchemy.orm import declarative_base, sessionmaker, Session
 from sqlalchemy.dialects.postgresql import UUID
 import requests as http_requests
@@ -28,6 +28,7 @@ ACCESS_TOKEN_EXPIRE_MINUTES = 60 * 24 * 7 # 7 days
 GROQ_API_KEY = os.getenv("GROQ_API_KEY")
 GROQ_URL = "https://api.groq.com/openai/v1/chat/completions"
 GROQ_MODEL = "openai/gpt-oss-20b"
+ADMIN_EMAILS = {email.strip().casefold() for email in os.getenv("ADMIN_EMAILS", "").split(",") if email.strip()}
 
 # --- Database Setup ---
 is_sqlite = DATABASE_URL.startswith("sqlite")
@@ -76,8 +77,9 @@ try:
         table_exists = table_exists_res.scalar()
         
         if table_exists and not row:
-            print("Detected outdated 'orders' table. Dropping to recreate with 'user_id' column.")
-            conn.execute(text("DROP TABLE IF EXISTS orders CASCADE"))
+            # Keep historical orders; new records will populate the nullable user_id.
+            print("Detected legacy 'orders' table. Adding user_id without deleting orders.")
+            conn.execute(text("ALTER TABLE orders ADD COLUMN user_id INTEGER"))
             conn.commit()
 except Exception as migration_err:
     print(f"Skipping orders table schema migration check: {migration_err}")
@@ -129,6 +131,14 @@ def get_current_user(decoded_token: dict = Depends(verify_token), db: Session = 
     return user
 
 
+def get_admin_user(user: User = Depends(get_current_user)):
+    if not ADMIN_EMAILS:
+        raise HTTPException(status_code=503, detail="Admin access is not configured")
+    if user.email.casefold() not in ADMIN_EMAILS:
+        raise HTTPException(status_code=403, detail="Administrator access required")
+    return user
+
+
 # --- FastAPI Application ---
 app = FastAPI(title="PureForce Bleach API")
 
@@ -140,9 +150,8 @@ app.add_middleware(
         "http://localhost:3000",
         "http://localhost:5500",
         "http://127.0.0.1:5500",
-        "*"
     ],
-    allow_credentials=True,
+    allow_credentials=False,
     allow_methods=["*"],
     allow_headers=["*"],
 )
@@ -304,3 +313,66 @@ def get_orders(user: User = Depends(get_current_user), db: Session = Depends(get
         return orders
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+
+
+@app.get("/admin/analytics")
+def admin_analytics(admin: User = Depends(get_admin_user), db: Session = Depends(get_db)):
+    now = datetime.utcnow()
+    month_start = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+    users_total = db.query(User).count()
+    monthly_users = db.query(User).filter(User.created_at >= month_start).count()
+    orders_total = db.query(Order).count()
+
+    product_rows = (
+        db.query(Order.product, func.sum(Order.quantity))
+        .group_by(Order.product)
+        .all()
+    )
+    products = [
+        {"name": product, "quantity": int(quantity or 0), "revenue": None}
+        for product, quantity in product_rows
+    ]
+
+    latest_orders = db.query(Order).order_by(Order.created_at.desc()).limit(10).all()
+    orders = [
+        {
+            "id": order.id,
+            "customer": order.email,
+            "date": order.created_at.isoformat() if order.created_at else None,
+            "status": "Placed",
+        }
+        for order in latest_orders
+    ]
+    users = [
+        {
+            "name": user.username,
+            "email": user.email,
+            "created_at": user.created_at.isoformat() if user.created_at else None,
+        }
+        for user in db.query(User).order_by(User.created_at.desc()).limit(10).all()
+    ]
+    notifications = [
+        {
+            "message": f"Order #{order.id} received from {order.name}",
+            "date": order.created_at.isoformat() if order.created_at else None,
+        }
+        for order in latest_orders[:5]
+    ]
+
+    # Sales, visits, and subscriptions are not tracked by the current schema.
+    return {
+        "visitors": None,
+        "sales": None,
+        "subscriptions": None,
+        "orders": orders,
+        "orders_total": orders_total,
+        "open_rate": None,
+        "users_total": users_total,
+        "monthly_users": monthly_users,
+        "products": products,
+        "sales_series": [],
+        "users": users,
+        "notifications": notifications,
+        "currency": "USD",
+    }
