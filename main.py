@@ -2,11 +2,11 @@ import os
 import uuid
 import json
 from datetime import datetime, timedelta
-from typing import List, Optional
+from typing import List, Optional, Literal
 
 from fastapi import FastAPI, HTTPException, Depends, Header, Response
 from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 import jwt
 import bcrypt
 from sqlalchemy import create_engine, Column, Integer, String, Text, DateTime, JSON, ForeignKey, func
@@ -264,12 +264,12 @@ def generate(req: ChatPrompt, user: User = Depends(get_current_user), db: Sessio
         raise HTTPException(status_code=500, detail=str(e))
 
 class OrderRequest(BaseModel):
-    name: str
-    email: str
-    phone: str
-    product: str
-    quantity: int
-    address: str
+    name: str = Field(min_length=1, max_length=255)
+    email: str = Field(min_length=3, max_length=255)
+    phone: str = Field(min_length=3, max_length=100)
+    product: Literal["original", "ultra", "eco"]
+    quantity: int = Field(ge=1, le=50)
+    address: str = Field(min_length=1, max_length=2000)
 
 from email_utils import send_order_notification
 
