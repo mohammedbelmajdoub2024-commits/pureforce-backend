@@ -20,7 +20,7 @@ load_dotenv()
 
 # --- Configuration ---
 DATABASE_URL = os.getenv("DATABASE_URL", "postgresql://pureforce:secret@db:5432/pureforce")
-JWT_SECRET = os.getenv("JWT_SECRET", "supersecretkey")
+JWT_SECRET = os.getenv("JWT_SECRET", "")
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
 ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES = 60 * 24 * 7 # 7 days
@@ -98,6 +98,8 @@ def get_password_hash(password: str) -> str:
     return bcrypt.hashpw(password.encode('utf-8'), salt).decode('utf-8')
 
 def create_access_token(data: dict):
+    if len(JWT_SECRET) < 32:
+        raise HTTPException(status_code=503, detail="Authentication is not configured. Set a strong JWT_SECRET.")
     to_encode = data.copy()
     expire = datetime.utcnow() + timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
     to_encode.update({"exp": expire})
