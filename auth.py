@@ -3,7 +3,7 @@ import jwt
 from fastapi import Depends, HTTPException
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 
-JWT_SECRET = os.getenv("JWT_SECRET", "supersecretkey")
+JWT_SECRET = os.getenv("JWT_SECRET", "")
 ALGORITHM = "HS256"
 
 security = HTTPBearer()
@@ -13,6 +13,9 @@ def verify_token(
     credentials: HTTPAuthorizationCredentials = Depends(security)
 ):
     token = credentials.credentials
+
+    if len(JWT_SECRET) < 32:
+        raise HTTPException(status_code=503, detail="Authentication is not configured. Set a strong JWT_SECRET.")
 
     try:
         decoded_token = jwt.decode(
