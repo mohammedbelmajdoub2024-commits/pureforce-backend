@@ -149,6 +149,7 @@ app.add_middleware(
     CORSMiddleware,
     allow_origins=[
         "https://stirring-monstera-e17e3e.netlify.app",
+        "https://pureforce-bleach.pages.dev",
         "http://localhost:3000",
         "http://localhost:5500",
         "http://127.0.0.1:5500",
